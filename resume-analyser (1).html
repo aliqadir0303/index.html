@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Resume Analyser</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap');
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:#050b15;}
+::-webkit-scrollbar{width:4px;}
+::-webkit-scrollbar-thumb{background:#1e293b;border-radius:4px;}
+textarea:focus,input:focus{outline:none;}
+.tab{background:none;border:none;cursor:pointer;padding:8px 16px;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;transition:all .2s;}
+.tab.on{background:#0f1e35;color:#3b82f6;}
+.tab:not(.on){color:#475569;}
+.tab:not(.on):hover{color:#94a3b8;}
+.pc{background:#080f1c;border:1px solid #1e293b;border-radius:12px;padding:14px 16px;cursor:pointer;transition:border-color .2s;margin-bottom:8px;}
+.pc:hover{border-color:#1e3a5f;}
+.abtn{background:linear-gradient(135deg,#3b82f6,#6366f1);border:none;border-radius:10px;color:#fff;font-size:15px;font-weight:700;padding:13px 0;cursor:pointer;font-family:'DM Sans',sans-serif;width:100%;transition:all .2s;}
+.abtn:hover{transform:translateY(-1px);box-shadow:0 8px 28px rgba(59,130,246,.4);}
+.abtn:disabled{background:#1e293b;color:#475569;transform:none;box-shadow:none;cursor:not-allowed;}
+.dz{border:2px dashed #1e3a5f;border-radius:14px;padding:36px;text-align:center;cursor:pointer;transition:all .3s;background:#080f1c;}
+.dz:hover,.dz.drag{border-color:#3b82f6;background:#0d1b2e;}
+.kc{background:#0d1b2e;border:1px solid #1e3a5f;border-radius:20px;padding:3px 10px;font-size:11px;color:#60a5fa;font-family:'DM Mono',monospace;display:inline-block;margin:2px;}
+.km{background:#1a0d0d;border:1px solid #7f1d1d;border-radius:20px;padding:3px 10px;font-size:11px;color:#f87171;font-family:'DM Mono',monospace;display:inline-block;margin:2px;}
+.mc{background:#0d1f0d;border:1px solid #14532d;border-radius:20px;padding:3px 10px;font-size:11px;color:#4ade80;font-family:'DM Mono',monospace;display:inline-block;margin:2px;}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes fu{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+'use strict';
+const {createElement:h,useState,useRef,Fragment}=React;
+
+// ── PDF.js loader ────────────────────────────────────────────────────────────
+const loadPdfJs=()=>new Promise((res,rej)=>{
+  if(window.pdfjsLib){res(window.pdfjsLib);return;}
+  const s=document.createElement('script');
+  s.src='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+  s.onload=()=>{
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    res(window.pdfjsLib);
+  };
+  s.onerror=rej;
+  document.head.appendChild(s);
+});
+
+// ── Prompt ───────────────────────────────────────────────────────────────────
+const PROMPT=text=>`You are a world-class resume analyst. Analyse the resume below and return ONLY valid JSON, no markdown, no text outside JSON.
+
+RESUME:
+"""${text}"""
+
+Return EXACTLY this JSON:
+{
+  "overall_score": <0-100>,
+  "candidate_name": "<n>",
+  "inferred_role": "<role>",
+  "parameters": {
+    "ats_compatibility":        {"score":<n>,"status":"<Good|Needs Work|Critical>","findings":"<t>","issues":["<i>"],"suggestions":["<s>"]},
+    "resume_format":            {"score":<n>,"status":"<Good|Needs Work|Critical>","findings":"<t>","issues":["<i>"],"suggestions":["<s>"]},
+    "single_column_structure":  {"score":<n>,"status":"<Good|Needs Work|Critical>","findings":"<t>","issues":[],"suggestions":[]},
+    "no_images_or_graphics":    {"score":<n>,"status":"<Good|Needs Work|Critical>","findings":"<t>","issues":[],"suggestions":[]},
+    "no_colours_or_tables":     {"score":<n>,"status":"<Good|Needs Work|Critical>","findings":"<t>","issues":[],"suggestions":[]},
+    "professional_headline":    {"score":<n>,"status":"<Good|Needs Work|Critical>","findings":"<t>","issues":[],"suggestions":[]},
+    "summary_section":          {"score":<n>,"status":"<Good|Needs Work|Critical>","findings":"<t>","issues":[],"suggestions":[]},
+    "skills_placement":         {"score":<n>,"status":"<Good|Needs Work|Critical>","findings":"<t>","issues":[],"suggestions":[]},
+    "keywords_relevance":       {"score":<n>,"status":"<Good|Needs Work|Critical>","findings":"<t>","keywords_found":["<k>"],"keywords_missing":["<k>"],"issues":[],"suggestions":[]},
+    "quantifiable_metrics":     {"score":<n>,"status":"<Good|Needs Work|Critical>","findings":"<t>","metrics_found":["<m>"],"issues":[],"suggestions":[]},
+    "strategic_impact":         {"score":<n>,"status":"<Good|Needs Work|Critical>","findings":"<t>","issues":[],"suggestions":[]},
+    "action_verbs":             {"score":<n>,"status":"<Good|Needs Work|Critical>","findings":"<t>","verbs_found":["<v>"],"issues":[],"suggestions":[]},
+    "work_experience_quality":  {"score":<n>,"status":"<Good|Needs Work|Critical>","findings":"<t>","issues":[],"suggestions":[]},
+    "education_section":        {"score":<n>,"status":"<Good|Needs Work|Critical>","findings":"<t>","issues":[],"suggestions":[]},
+    "contact_information":      {"score":<n>,"status":"<Good|Needs Work|Critical>","findings":"<t>","issues":[],"suggestions":[]},
+    "length_appropriateness":   {"score":<n>,"status":"<Good|Needs Work|Critical>","findings":"<t>","issues":[],"suggestions":[]},
+    "consistency_formatting":   {"score":<n>,"status":"<Good|Needs Work|Critical>","findings":"<t>","issues":[],"suggestions":[]},
+    "ats_friendly_content":     {"score":<n>,"status":"<Good|Needs Work|Critical>","findings":"<t>","issues":[],"suggestions":[]},
+    "linkedin_github_presence": {"score":<n>,"status":"<Good|Needs Work|Critical>","findings":"<t>","issues":[],"suggestions":[]}
+  },
+  "top_strengths": ["<s>","<s>","<s>"],
+  "critical_issues": ["<i>","<i>","<i>"],
+  "rewritten_resume": {
+    "name": "<FULL NAME IN CAPS>",
+    "headline": "<Role - Spec 1 | Spec 2 | Spec 3>",
+    "contact": "<City, Country | Phone | Email | LinkedIn>",
+    "summary": "<3-4 sentence results-oriented summary>",
+    "skills": [{"category":"<Cat>","items":"<S1 | S2 | S3>"}],
+    "experience": [{"company":"<CO>","title":"<T>","location":"<L>","dates":"<D>","bullets":[{"label":"<L:>","text":"<T>"}]}],
+    "education": [{"institution":"<U>","degree":"<D>","location":"<L>","dates":"<D>"}],
+    "certifications": [{"name":"<N>","issuer":"<I>"}]
+  }
+}`;
+
+// ── Constants ────────────────────────────────────────────────────────────────
+const PM={
+  ats_compatibility:       {l:'ATS Compatibility',       i:'🤖'},
+  resume_format:           {l:'Resume Format',            i:'📐'},
+  single_column_structure: {l:'Single Column Structure',  i:'▤'},
+  no_images_or_graphics:   {l:'No Images / Graphics',     i:'🚫'},
+  no_colours_or_tables:    {l:'No Colours / Tables',      i:'🎨'},
+  professional_headline:   {l:'Professional Headline',    i:'🏷️'},
+  summary_section:         {l:'Summary / Objective',      i:'📝'},
+  skills_placement:        {l:'Skills Placement',         i:'⚡'},
+  keywords_relevance:      {l:'Keyword Relevance',        i:'🔑'},
+  quantifiable_metrics:    {l:'Quantifiable Metrics',     i:'📊'},
+  strategic_impact:        {l:'Strategic Impact',         i:'🎯'},
+  action_verbs:            {l:'Action Verbs',             i:'💪'},
+  work_experience_quality: {l:'Work Experience Quality',  i:'💼'},
+  education_section:       {l:'Education Section',        i:'🎓'},
+  contact_information:     {l:'Contact Information',      i:'📬'},
+  length_appropriateness:  {l:'Length Appropriateness',   i:'📏'},
+  consistency_formatting:  {l:'Formatting Consistency',   i:'✏️'},
+  ats_friendly_content:    {l:'ATS-Friendly Content',     i:'✅'},
+  linkedin_github_presence:{l:'LinkedIn / GitHub Links',  i:'🔗'},
+};
+const GROUPS={
+  'ATS & Format':   ['ats_compatibility','resume_format','single_column_structure','no_images_or_graphics','no_colours_or_tables','ats_friendly_content'],
+  'Content Quality':['professional_headline','summary_section','skills_placement','keywords_relevance','action_verbs','work_experience_quality'],
+  'Impact':         ['quantifiable_metrics','strategic_impact'],
+  'Completeness':   ['contact_information','education_section','length_appropriateness','consistency_formatting','linkedin_github_presence'],
+};
+const sCol={Good:'#22c55e','Needs Work':'#f59e0b',Critical:'#ef4444'};
+const sBg ={Good:'#052e16','Needs Work':'#431407',Critical:'#450a0a'};
+const sBr ={Good:'#166534','Needs Work':'#9a3412',Critical:'#991b1b'};
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+function Ring({score,size=130,sw=11}){
+  const r=(size-sw)/2,c=2*Math.PI*r,d=(score/100)*c;
+  const col=score>=75?'#22c55e':score>=50?'#f59e0b':'#ef4444';
+  return h('svg',{width:size,height:size,style:{transform:'rotate(-90deg)'}},
+    h('circle',{cx:size/2,cy:size/2,r,fill:'none',stroke:'#1e293b',strokeWidth:sw}),
+    h('circle',{cx:size/2,cy:size/2,r,fill:'none',stroke:col,strokeWidth:sw,strokeDasharray:`${d} ${c-d}`,strokeLinecap:'round'})
+  );
+}
+function Bar({v}){
+  const col=v>=75?'#22c55e':v>=50?'#f59e0b':'#ef4444';
+  return h('div',{style:{height:4,background:'#1e293b',borderRadius:3,overflow:'hidden',flex:1}},
+    h('div',{style:{height:'100%',width:`${v}%`,background:col,borderRadius:3}})
+  );
+}
+
+// ── PDF / Word builders ──────────────────────────────────────────────────────
+function buildPdfHtml(r){
+  const sk=(r.skills||[]).map(s=>`<p class="sk"><b>${s.category} </b>${s.items||''}</p>`).join('');
+  const ex=(r.experience||[]).map(j=>`<div class="job"><div class="co">${(j.company||'').toUpperCase()}</div><div class="jm"><b>${j.title||''}</b> <span class="mu">| ${j.location||''} | ${j.dates||''}</span></div>${(j.bullets||[]).map(b=>`<p class="bl"><b>${b.label||''}</b> ${b.text||''}</p>`).join('')}</div>`).join('');
+  const ed=(r.education||[]).map(e=>`<div class="ei"><b>${e.institution||''}</b><br><span class="mu">${e.degree||''} | ${e.location||''} | ${e.dates||''}</span></div>`).join('');
+  const ce=(r.certifications||[]).map(c=>`<p class="cl"><b>${c.name||''}</b> | ${c.issuer||''}</p>`).join('');
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${r.name||'Resume'}</title><style>*{box-sizing:border-box;margin:0;padding:0;}body{font-family:'Times New Roman',Georgia,serif;font-size:10pt;color:#111;padding:44pt 50pt;line-height:1.5;}.nm{text-align:center;font-size:20pt;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:5pt;}.hl{text-align:center;font-size:10pt;font-weight:700;margin-bottom:4pt;}.ct{text-align:center;font-size:9pt;color:#444;margin-bottom:8pt;padding-bottom:8pt;border-bottom:1px solid #bbb;}.su{font-size:9.5pt;line-height:1.65;color:#222;margin-bottom:12pt;}.sh{font-size:10.5pt;font-weight:700;text-transform:uppercase;border-bottom:1.5pt solid #000;padding-bottom:2pt;margin-bottom:6pt;margin-top:12pt;}.sk{font-size:9.5pt;margin-bottom:3pt;}.job{margin-bottom:10pt;}.co{font-size:10pt;font-weight:700;text-transform:uppercase;margin-bottom:1pt;}.jm{font-size:9.5pt;margin-bottom:3pt;}.mu{color:#555;}.bl{font-size:9.5pt;margin-bottom:2pt;line-height:1.55;padding-left:8pt;}.ei{margin-bottom:8pt;font-size:9.5pt;}.cl{font-size:9.5pt;margin-bottom:3pt;}@page{size:letter;margin:0;}</style></head><body><div class="nm">${r.name||''}</div><div class="hl">${r.headline||''}</div><div class="ct">${r.contact||''}</div><div class="su">${r.summary||''}</div><div class="sh">Core Competencies / Skills</div>${sk}<div class="sh">Professional Experience</div>${ex}<div class="sh">Education &amp; Certifications</div>${ed}${ce}</body></html>`;
+}
+
+function buildWordHtml(r){
+  const sh=t=>`<p style="font-family:'Times New Roman';font-size:11pt;font-weight:bold;text-transform:uppercase;border-bottom:2px solid #000;padding-bottom:2pt;margin:14pt 0 6pt;">${t}</p>`;
+  const sk=(r.skills||[]).map(s=>`<p style="font-family:'Times New Roman';font-size:10pt;margin:2pt 0;"><b>${s.category}: </b>${s.items||''}</p>`).join('');
+  const ex=(r.experience||[]).map(j=>`<p style="font-family:'Times New Roman';font-size:11pt;font-weight:bold;margin:10pt 0 1pt;text-transform:uppercase;">${j.company||''}</p><p style="font-family:'Times New Roman';font-size:10pt;margin:0 0 3pt;"><b>${j.title||''}</b> <span style="color:#555;">| ${j.location||''} | ${j.dates||''}</span></p>${(j.bullets||[]).map(b=>`<p style="font-family:'Times New Roman';font-size:10pt;margin:1pt 0 1pt 14pt;"><b>${b.label||''}</b> ${b.text||''}</p>`).join('')}`).join('');
+  const ed=(r.education||[]).map(e=>`<p style="font-family:'Times New Roman';font-size:10pt;margin:3pt 0;"><b>${e.institution||''}</b><br><span style="color:#444;">${e.degree||''} | ${e.location||''} | ${e.dates||''}</span></p>`).join('');
+  const ce=(r.certifications||[]).map(c=>`<p style="font-family:'Times New Roman';font-size:10pt;margin:2pt 0;"><b>${c.name||''}</b> | ${c.issuer||''}</p>`).join('');
+  return `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="UTF-8"><style>body{font-family:'Times New Roman';font-size:10pt;color:#111;}@page{size:21cm 29.7cm;margin:2.5cm;}</style></head><body><p style="text-align:center;font-size:20pt;font-weight:bold;letter-spacing:2px;text-transform:uppercase;margin-bottom:5pt;">${r.name||''}</p><p style="text-align:center;font-size:10pt;font-weight:bold;margin-bottom:4pt;">${r.headline||''}</p><p style="text-align:center;font-size:9pt;color:#444;border-bottom:1px solid #bbb;padding-bottom:6pt;margin-bottom:8pt;">${r.contact||''}</p><p style="font-size:10pt;line-height:1.6;margin-bottom:12pt;">${r.summary||''}</p>${sh('Core Competencies / Skills')}${sk}${sh('Professional Experience')}${ex}${sh('Education & Certifications')}${ed}${ce}</body></html>`;
+}
+
+function triggerDownload(content,filename,mime){
+  const encoded=btoa(unescape(encodeURIComponent(content)));
+  const a=document.createElement('a');
+  a.href=`data:${mime};base64,`+encoded;
+  a.download=filename;
+  document.body.appendChild(a);a.click();document.body.removeChild(a);
+}
+
+// ── Main App ─────────────────────────────────────────────────────────────────
+function App(){
+  const [stage,setStage]=useState('upload');
+  const [resumeText,setResumeText]=useState('');
+  const [fileName,setFileName]=useState('');
+  const [data,setData]=useState(null);
+  const [tab,setTab]=useState('overview');
+  const [exp,setExp]=useState(null);
+  const [copied,setCopied]=useState(false);
+  const [drag,setDrag]=useState(false);
+  const [prog,setProg]=useState(0);
+  const [err,setErr]=useState('');
+  const fRef=useRef();
+
+  async function extractText(file){
+    const n=file.name.toLowerCase();
+    if(file.type==='text/plain'||n.endsWith('.txt'))return file.text();
+    if(n.endsWith('.docx')||file.type.includes('wordprocessingml')){
+      try{const ab=await file.arrayBuffer();const r=await mammoth.extractRawText({arrayBuffer:ab});return r.value||null;}catch{return null;}
+    }
+    if(n.endsWith('.pdf')||file.type==='application/pdf'){
+      try{
+        const pdfjs=await loadPdfJs();const ab=await file.arrayBuffer();
+        const pdf=await pdfjs.getDocument({data:ab}).promise;
+        let t='';
+        for(let i=1;i<=pdf.numPages;i++){const pg=await pdf.getPage(i);const c=await pg.getTextContent();t+=c.items.map(x=>x.str).join(' ')+'\n';}
+        return t.trim().length>20?t.trim():null;
+      }catch{return null;}
+    }
+    return null;
+  }
+
+  async function handleFile(file){
+    if(!file)return;
+    const text=await extractText(file);
+    if(!text){alert(`Could not read "${file.name}". Please paste resume text below.`);return;}
+    setFileName(file.name);setResumeText(text);
+  }
+
+  async function runAnalysis(){
+    if(!resumeText.trim())return;
+    setStage('analysing');setProg(0);
+    const t=setInterval(()=>setProg(p=>Math.min(p+Math.random()*8,90)),500);
+    try{
+      const res=await fetch('https://api.anthropic.com/v1/messages',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:8000,messages:[{role:'user',content:PROMPT(resumeText)}]})
+      });
+      if(!res.ok)throw new Error(`HTTP ${res.status}`);
+      const d=await res.json();
+      if(d.error)throw new Error(d.error.message);
+      const raw=d.content?.map(b=>b.text||'').join('')||'';
+      if(!raw)throw new Error('Empty response');
+      const m=raw.match(/\{[\s\S]*\}/);
+      if(!m)throw new Error('No JSON found');
+      let parsed;
+      try{parsed=JSON.parse(m[0]);}catch{parsed=JSON.parse(m[0].replace(/,\s*}/g,'}').replace(/,\s*]/g,']'));}
+      clearInterval(t);setProg(100);
+      setTimeout(()=>{setData(parsed);setStage('results');},500);
+    }catch(e){clearInterval(t);setErr(e.message||'Unknown');setStage('error');}
+  }
+
+  function downloadPdf(){
+    const r=data?.rewritten_resume;if(!r||typeof r!=='object')return;
+    const name=(r.name||'Resume').replace(/\s+/g,'_');
+    triggerDownload(buildPdfHtml(r),name+'_ATS_Resume.html','text/html');
+  }
+
+  function downloadWord(){
+    const r=data?.rewritten_resume;if(!r||typeof r!=='object')return;
+    const name=(r.name||'Resume').replace(/\s+/g,'_');
+    triggerDownload(buildWordHtml(r),name+'_ATS_Resume.doc','application/msword');
+  }
+
+  function copyText(){
+    const r=data?.rewritten_resume;if(!r||typeof r!=='object')return;
+    const lines=[r.name,r.headline,r.contact,'','PROFESSIONAL SUMMARY',r.summary,'','CORE COMPETENCIES / SKILLS',...(r.skills||[]).map(s=>`${s.category}: ${s.items}`),'','PROFESSIONAL EXPERIENCE',...(r.experience||[]).flatMap(e=>[e.company,`${e.title} | ${e.location} | ${e.dates}`,...(e.bullets||[]).map(b=>`${b.label} ${b.text}`),'']),'EDUCATION & CERTIFICATIONS',...(r.education||[]).map(e=>`${e.institution} | ${e.degree} | ${e.location} | ${e.dates}`),...(r.certifications||[]).map(c=>`${c.name} | ${c.issuer}`)];
+    navigator.clipboard.writeText(lines.join('\n'));
+    setCopied(true);setTimeout(()=>setCopied(false),2000);
+  }
+
+  // ── UPLOAD ──────────────────────────────────────────────────────────────
+  if(stage==='upload') return h('div',{style:{background:'#050b15',minHeight:'100vh',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:24,fontFamily:"'DM Sans',sans-serif"}},
+    h('div',{style:{textAlign:'center',marginBottom:32}},
+      h('div',{style:{fontSize:44,marginBottom:10}},'📋'),
+      h('h1',{style:{fontFamily:"'DM Serif Display',serif",fontSize:32,color:'#f1f5f9',letterSpacing:'-1px',marginBottom:8}},'Resume Analyser'),
+      h('p',{style:{color:'#475569',fontSize:14,maxWidth:420,lineHeight:1.6,margin:'0 auto'}},'19-parameter ATS audit + AI rewrite in your exact sample template format.')
+    ),
+    h('div',{style:{width:'100%',maxWidth:520}},
+      h('div',{
+        className:`dz${drag?' drag':''}`,
+        onDragOver:e=>{e.preventDefault();setDrag(true);},
+        onDragLeave:()=>setDrag(false),
+        onDrop:e=>{e.preventDefault();setDrag(false);handleFile(e.dataTransfer.files[0]);},
+        onClick:()=>fRef.current.click()
+      },
+        h('input',{ref:fRef,type:'file',accept:'.txt,.docx,.pdf',style:{display:'none'},onChange:e=>handleFile(e.target.files[0])}),
+        h('div',{style:{fontSize:30,marginBottom:8}},fileName?'📄':'⬆️'),
+        fileName
+          ? h('div',{style:{color:'#3b82f6',fontWeight:600,fontSize:14}},fileName)
+          : h(Fragment,null,
+              h('div',{style:{color:'#94a3b8',fontWeight:600,marginBottom:3}},'Drop your resume here'),
+              h('div',{style:{color:'#334155',fontSize:12}},'PDF · DOCX · TXT · or click to browse')
+            )
+      ),
+      h('div',{style:{display:'flex',alignItems:'center',gap:10,margin:'16px 0'}},
+        h('div',{style:{flex:1,height:1,background:'#1e293b'}}),
+        h('span',{style:{color:'#334155',fontSize:12}},'or paste resume text'),
+        h('div',{style:{flex:1,height:1,background:'#1e293b'}})
+      ),
+      h('textarea',{value:resumeText,onChange:e=>setResumeText(e.target.value),rows:9,placeholder:'Paste your resume content here…',style:{width:'100%',background:'#080f1c',border:'1px solid #1e293b',borderRadius:12,color:'#e2e8f0',fontSize:12,padding:'12px 14px',fontFamily:"'DM Mono',monospace",lineHeight:1.7,resize:'vertical'}}),
+      h('div',{style:{marginTop:12}},
+        h('button',{className:'abtn',onClick:runAnalysis,disabled:!resumeText.trim()},'Analyse Resume →')
+      ),
+      h('div',{style:{display:'flex',flexWrap:'wrap',gap:5,marginTop:18,justifyContent:'center'}},
+        ...Object.values(PM).slice(0,11).map(p=>h('span',{key:p.l,style:{background:'#080f1c',border:'1px solid #1e293b',borderRadius:20,padding:'2px 9px',fontSize:10,color:'#475569',fontFamily:"'DM Mono',monospace"}},`${p.i} ${p.l}`)),
+        h('span',{style:{background:'#080f1c',border:'1px solid #1e293b',borderRadius:20,padding:'2px 9px',fontSize:10,color:'#3b82f6',fontFamily:"'DM Mono',monospace"}},'+8 more')
+      )
+    )
+  );
+
+  // ── ANALYSING ────────────────────────────────────────────────────────────
+  if(stage==='analysing') return h('div',{style:{background:'#050b15',minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:"'DM Sans',sans-serif"}},
+    h('div',{style:{textAlign:'center',maxWidth:360}},
+      h('div',{style:{width:68,height:68,border:'3px solid #1e293b',borderTop:'3px solid #3b82f6',borderRadius:'50%',margin:'0 auto 18px',animation:'spin 1s linear infinite'}}),
+      h('h2',{style:{fontFamily:"'DM Serif Display',serif",color:'#f1f5f9',fontSize:22,marginBottom:6}},'Analysing Your Resume'),
+      h('p',{style:{color:'#475569',fontSize:12,marginBottom:24}},'Running 19-parameter ATS audit + AI rewrite'),
+      h('div',{style:{background:'#0a1525',border:'1px solid #1e293b',borderRadius:10,padding:'5px 6px',marginBottom:10}},
+        h('div',{style:{height:6,background:'#1e293b',borderRadius:6,overflow:'hidden'}},
+          h('div',{style:{height:'100%',width:`${prog}%`,background:'linear-gradient(90deg,#3b82f6,#6366f1)',borderRadius:6,transition:'width 0.4s'}})
+        )
+      ),
+      h('div',{style:{color:'#334155',fontSize:11,fontFamily:"'DM Mono',monospace",marginBottom:18}},`${Math.round(prog)}% complete`),
+      ...['Parsing resume…','ATS compatibility check…','Scoring 19 parameters…','Generating rewrite…'].map((t,i)=>
+        h('div',{key:i,style:{display:'flex',gap:8,alignItems:'center',marginBottom:5,opacity:prog>i*25?1:0.2,transition:'opacity 0.5s'}},
+          h('span',{style:{color:prog>i*25+20?'#22c55e':'#3b82f6',fontSize:12}},prog>i*25+20?'✓':'◉'),
+          h('span',{style:{color:'#64748b',fontSize:12}},t)
+        )
+      )
+    )
+  );
+
+  // ── ERROR ────────────────────────────────────────────────────────────────
+  if(stage==='error') return h('div',{style:{background:'#050b15',minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:"'DM Sans',sans-serif",padding:24}},
+    h('div',{style:{maxWidth:440,textAlign:'center'}},
+      h('div',{style:{fontSize:48,marginBottom:12}},'⚠️'),
+      h('h2',{style:{fontFamily:"'DM Serif Display',serif",color:'#f1f5f9',fontSize:24,marginBottom:8}},'Analysis Failed'),
+      h('p',{style:{color:'#64748b',fontSize:13,marginBottom:12,lineHeight:1.6}},'Usually a connection issue or timeout. Try again.'),
+      h('div',{style:{background:'#0a1525',border:'1px solid #1e293b',borderRadius:8,padding:'8px 12px',marginBottom:22,fontFamily:"'DM Mono',monospace",fontSize:11,color:'#ef4444',textAlign:'left'}},err),
+      h('div',{style:{display:'flex',gap:10,justifyContent:'center'}},
+        h('button',{onClick:runAnalysis,style:{background:'linear-gradient(135deg,#3b82f6,#6366f1)',border:'none',borderRadius:10,color:'#fff',fontSize:13,fontWeight:700,padding:'10px 24px',cursor:'pointer',fontFamily:"'DM Sans',sans-serif"}},'↺ Retry'),
+        h('button',{onClick:()=>{setStage('upload');setData(null);},style:{background:'none',border:'1px solid #1e293b',borderRadius:10,color:'#475569',fontSize:13,padding:'10px 18px',cursor:'pointer',fontFamily:"'DM Sans',sans-serif"}},'← Back')
+      )
+    )
+  );
+
+  // ── RESULTS ──────────────────────────────────────────────────────────────
+  if(stage==='results'&&data){
+    const P=data.parameters||{},keys=Object.keys(PM);
+    const score=data.overall_score||0;
+    const sc=score>=75?'#22c55e':score>=50?'#f59e0b':'#ef4444';
+    const r=data.rewritten_resume,hasR=r&&typeof r==='object';
+
+    const TabContent=()=>{
+      if(tab==='overview') return h('div',{style:{animation:'fu 0.3s ease'}},
+        // Score hero
+        h('div',{style:{display:'grid',gridTemplateColumns:'auto 1fr',gap:18,background:'#080f1c',border:`1px solid ${sc}30`,borderRadius:14,padding:18,marginBottom:18,alignItems:'center'}},
+          h('div',{style:{position:'relative',width:130,height:130,flexShrink:0}},
+            h(Ring,{score}),
+            h('div',{style:{position:'absolute',inset:0,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center'}},
+              h('div',{style:{fontSize:32,fontWeight:900,color:sc,fontFamily:"'DM Serif Display',serif"}},score),
+              h('div',{style:{fontSize:9,color:'#475569',fontFamily:"'DM Mono',monospace"}},'/100')
+            )
+          ),
+          h('div',null,
+            h('div',{style:{fontSize:19,fontWeight:800,fontFamily:"'DM Serif Display',serif",marginBottom:4}},
+              score>=80?'Excellent Resume':score>=65?'Good — Needs Tuning':score>=45?'Needs Significant Work':'Critical — Major Overhaul Needed'
+            ),
+            h('div',{style:{fontSize:12,color:'#64748b',marginBottom:12}},'Analysed across 19 parameters.'),
+            h('div',{style:{display:'flex',gap:18}},
+              ...['Good','Needs Work','Critical'].map(s=>
+                h('div',{key:s,style:{textAlign:'center'}},
+                  h('div',{style:{fontSize:20,fontWeight:900,color:sCol[s]}},keys.filter(k=>P[k]?.status===s).length),
+                  h('div',{style:{fontSize:10,color:'#475569'}},s)
+                )
+              )
+            )
+          )
+        ),
+        // Groups
+        h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:16}},
+          ...Object.entries(GROUPS).map(([g,ks])=>{
+            const avg=Math.round(ks.reduce((s,k)=>s+(P[k]?.score||0),0)/ks.length);
+            const gc=avg>=75?'#22c55e':avg>=50?'#f59e0b':'#ef4444';
+            return h('div',{key:g,style:{background:'#080f1c',border:'1px solid #1e293b',borderRadius:12,padding:14}},
+              h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}},
+                h('div',{style:{fontSize:11,fontWeight:700,color:'#94a3b8'}},g),
+                h('div',{style:{fontSize:17,fontWeight:900,color:gc,fontFamily:"'DM Mono',monospace"}},avg)
+              ),
+              ...ks.map(k=>h('div',{key:k,style:{display:'flex',alignItems:'center',gap:5,marginBottom:4}},
+                h('span',{style:{fontSize:10,width:14}},PM[k]?.i),
+                h('span',{style:{fontSize:10,color:'#475569',width:145,flexShrink:0}},PM[k]?.l),
+                h(Bar,{v:P[k]?.score||0}),
+                h('span',{style:{fontSize:9,color:sCol[P[k]?.status]||'#475569',width:22,textAlign:'right',fontFamily:"'DM Mono',monospace"}},P[k]?.score||0)
+              ))
+            );
+          })
+        ),
+        // Strengths / Issues
+        h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}},
+          h('div',{style:{background:'#052e16',border:'1px solid #166534',borderRadius:12,padding:14}},
+            h('div',{style:{fontSize:12,fontWeight:700,color:'#22c55e',marginBottom:10}},'✅ Top Strengths'),
+            ...(data.top_strengths||[]).map((s,i)=>h('div',{key:i,style:{display:'flex',gap:6,marginBottom:6}},
+              h('span',{style:{color:'#22c55e',flexShrink:0}},'◆'),
+              h('span',{style:{fontSize:12,color:'#86efac',lineHeight:1.5}},s)
+            ))
+          ),
+          h('div',{style:{background:'#450a0a',border:'1px solid #991b1b',borderRadius:12,padding:14}},
+            h('div',{style:{fontSize:12,fontWeight:700,color:'#ef4444',marginBottom:10}},'⚠️ Critical Issues'),
+            ...(data.critical_issues||[]).map((s,i)=>h('div',{key:i,style:{display:'flex',gap:6,marginBottom:6}},
+              h('span',{style:{color:'#ef4444',flexShrink:0}},'◆'),
+              h('span',{style:{fontSize:12,color:'#fca5a5',lineHeight:1.5}},s)
+            ))
+          )
+        )
+      );
+
+      if(tab==='parameters') return h('div',null,
+        h('div',{style:{fontSize:12,color:'#475569',marginBottom:14}},'Click any parameter for findings and suggestions.'),
+        ...keys.map(key=>{
+          const p=P[key],m=PM[key];
+          if(!p||!m)return null;
+          const open=exp===key,c=sCol[p.status]||'#475569';
+          return h('div',{key,className:'pc',style:{borderColor:open?sBr[p.status]||'#1e3a5f':'#1e293b'},onClick:()=>setExp(open?null:key)},
+            h('div',{style:{display:'flex',alignItems:'center',gap:10}},
+              h('span',{style:{fontSize:17,flexShrink:0}},m.i),
+              h('div',{style:{flex:1}},
+                h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:5}},
+                  h('span',{style:{fontSize:13,fontWeight:600}},m.l),
+                  h('div',{style:{display:'flex',alignItems:'center',gap:7}},
+                    h('span',{style:{fontSize:9,fontWeight:700,padding:'2px 8px',borderRadius:20,background:`${c}20`,color:c,border:`1px solid ${c}40`,fontFamily:"'DM Mono',monospace"}},p.status),
+                    h('span',{style:{fontSize:14,fontWeight:900,color:c,fontFamily:"'DM Mono',monospace",minWidth:26,textAlign:'right'}},p.score),
+                    h('span',{style:{color:'#334155',fontSize:11}},open?'▲':'▼')
+                  )
+                ),
+                h('div',{style:{height:4,background:'#1e293b',borderRadius:3,overflow:'hidden'}},
+                  h('div',{style:{height:'100%',width:`${p.score}%`,background:c,borderRadius:3}})
+                )
+              )
+            ),
+            open&&h('div',{style:{marginTop:14,paddingTop:14,borderTop:'1px solid #1e293b'},onClick:e=>e.stopPropagation()},
+              h('div',{style:{background:'#0a1525',borderRadius:8,padding:10,marginBottom:10}},
+                h('div',{style:{fontSize:9,color:'#334155',fontFamily:"'DM Mono',monospace",marginBottom:4,textTransform:'uppercase'}},'FINDINGS'),
+                h('div',{style:{fontSize:12,color:'#94a3b8',lineHeight:1.6}},p.findings)
+              ),
+              p.keywords_found?.length>0&&h('div',{style:{marginBottom:9}},h('div',{style:{fontSize:9,color:'#22c55e',fontFamily:"'DM Mono',monospace",marginBottom:4}},'✓ KEYWORDS FOUND'),h('div',{style:{display:'flex',flexWrap:'wrap',gap:5}},...p.keywords_found.map((k,i)=>h('span',{key:i,className:'kc'},k)))),
+              p.keywords_missing?.length>0&&h('div',{style:{marginBottom:9}},h('div',{style:{fontSize:9,color:'#ef4444',fontFamily:"'DM Mono',monospace",marginBottom:4}},'✗ MISSING'),h('div',{style:{display:'flex',flexWrap:'wrap',gap:5}},...p.keywords_missing.map((k,i)=>h('span',{key:i,className:'km'},k)))),
+              p.metrics_found?.length>0&&h('div',{style:{marginBottom:9}},h('div',{style:{fontSize:9,color:'#4ade80',fontFamily:"'DM Mono',monospace",marginBottom:4}},'✓ METRICS'),h('div',{style:{display:'flex',flexWrap:'wrap',gap:5}},...p.metrics_found.map((m,i)=>h('span',{key:i,className:'mc'},m)))),
+              p.verbs_found?.length>0&&h('div',{style:{marginBottom:9}},h('div',{style:{fontSize:9,color:'#60a5fa',fontFamily:"'DM Mono',monospace",marginBottom:4}},'ACTION VERBS'),h('div',{style:{display:'flex',flexWrap:'wrap',gap:5}},...p.verbs_found.map((v,i)=>h('span',{key:i,className:'kc'},v)))),
+              p.issues?.length>0&&h('div',{style:{background:sBg[p.status]||'#0f1e35',border:`1px solid ${sBr[p.status]||'#1e293b'}`,borderRadius:8,padding:10,marginBottom:9}},
+                h('div',{style:{fontSize:9,color:c,fontFamily:"'DM Mono',monospace",marginBottom:4,textTransform:'uppercase'}},'ISSUES'),
+                ...p.issues.map((iss,i)=>h('div',{key:i,style:{display:'flex',gap:6,marginBottom:3}},h('span',{style:{color:c,flexShrink:0}},'→'),h('span',{style:{fontSize:12,color:'#94a3b8',lineHeight:1.5}},iss)))
+              ),
+              p.suggestions?.length>0&&h('div',{style:{background:'#0d1b2e',border:'1px solid #1e3a5f',borderRadius:8,padding:10}},
+                h('div',{style:{fontSize:9,color:'#3b82f6',fontFamily:"'DM Mono',monospace",marginBottom:4,textTransform:'uppercase'}},'SUGGESTED FIXES'),
+                ...p.suggestions.map((s,i)=>h('div',{key:i,style:{display:'flex',gap:6,marginBottom:3}},h('span',{style:{color:'#3b82f6',flexShrink:0}},'✦'),h('span',{style:{fontSize:12,color:'#93c5fd',lineHeight:1.5}},s)))
+              )
+            )
+          );
+        })
+      );
+
+      if(tab==='keywords') return h('div',null,
+        h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14,marginBottom:14}},
+          h('div',{style:{background:'#052e16',border:'1px solid #166534',borderRadius:12,padding:14}},
+            h('div',{style:{fontSize:12,fontWeight:700,color:'#22c55e',marginBottom:10}},'✓ Keywords Present'),
+            h('div',null,...(P.keywords_relevance?.keywords_found||[]).map((k,i)=>h('span',{key:i,className:'kc',style:{fontSize:12,padding:'4px 12px'}},k)),!P.keywords_relevance?.keywords_found?.length&&h('span',{style:{color:'#334155',fontSize:12}},'None detected'))
+          ),
+          h('div',{style:{background:'#450a0a',border:'1px solid #991b1b',borderRadius:12,padding:14}},
+            h('div',{style:{fontSize:12,fontWeight:700,color:'#ef4444',marginBottom:10}},'✗ Missing Keywords'),
+            h('div',null,...(P.keywords_relevance?.keywords_missing||[]).map((k,i)=>h('span',{key:i,className:'km',style:{fontSize:12,padding:'4px 12px'}},k)),!P.keywords_relevance?.keywords_missing?.length&&h('span',{style:{color:'#334155',fontSize:12}},'None detected'))
+          )
+        ),
+        h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}},
+          h('div',{style:{background:'#0d1b2e',border:'1px solid #1e3a5f',borderRadius:12,padding:14}},
+            h('div',{style:{fontSize:12,fontWeight:700,color:'#60a5fa',marginBottom:10}},'💪 Action Verbs'),
+            h('div',null,...(P.action_verbs?.verbs_found||[]).map((v,i)=>h('span',{key:i,className:'kc',style:{fontSize:12,padding:'4px 12px'}},v)))
+          ),
+          h('div',{style:{background:'#0d1f0d',border:'1px solid #14532d',borderRadius:12,padding:14}},
+            h('div',{style:{fontSize:12,fontWeight:700,color:'#4ade80',marginBottom:10}},'📊 Quantifiable Metrics'),
+            h('div',null,...(P.quantifiable_metrics?.metrics_found||[]).map((m,i)=>h('span',{key:i,className:'mc',style:{fontSize:12,padding:'4px 12px'}},m)),!P.quantifiable_metrics?.metrics_found?.length&&h('span',{style:{color:'#334155',fontSize:12}},'No metrics found'))
+          )
+        )
+      );
+
+      if(tab==='rewrite') return h('div',null,
+        h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14,flexWrap:'wrap',gap:8}},
+          h('div',null,
+            h('div',{style:{fontSize:16,fontWeight:800,fontFamily:"'DM Serif Display',serif"}},'AI-Rewritten Resume'),
+            h('div',{style:{fontSize:11,color:'#475569',marginTop:2}},'Formatted to match your sample template · ATS-optimised')
+          ),
+          h('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
+            h('button',{onClick:copyText,style:{background:'#1e3a5f',border:'none',borderRadius:8,color:'#93c5fd',fontSize:12,fontWeight:600,padding:'7px 14px',cursor:'pointer',fontFamily:"'DM Sans',sans-serif"}},copied?'✓ Copied':'📋 Copy Text'),
+            h('button',{onClick:downloadWord,style:{background:'linear-gradient(135deg,#2563eb,#1d4ed8)',border:'none',borderRadius:8,color:'#fff',fontSize:12,fontWeight:700,padding:'7px 14px',cursor:'pointer',fontFamily:"'DM Sans',sans-serif"}},'⬇ Download Word'),
+            h('button',{onClick:downloadPdf,style:{background:'linear-gradient(135deg,#ef4444,#f97316)',border:'none',borderRadius:8,color:'#fff',fontSize:12,fontWeight:700,padding:'7px 14px',cursor:'pointer',fontFamily:"'DM Sans',sans-serif"}},'⬇ Download PDF')
+          )
+        ),
+        hasR?h('div',{style:{background:'#fff',borderRadius:14,padding:'40px 50px',color:'#111',boxShadow:'0 0 50px rgba(0,0,0,.5)',fontFamily:"'Times New Roman',Georgia,serif"}},
+          h('div',{style:{textAlign:'center',fontSize:21,fontWeight:900,letterSpacing:'1.5px',textTransform:'uppercase',marginBottom:5}},r.name),
+          h('div',{style:{textAlign:'center',fontSize:11,fontWeight:700,marginBottom:4}},r.headline),
+          h('div',{style:{textAlign:'center',fontSize:10,color:'#444',marginBottom:10,paddingBottom:10,borderBottom:'1px solid #ccc'}},r.contact),
+          h('div',{style:{fontSize:10.5,lineHeight:1.7,color:'#222',marginBottom:14}},r.summary),
+          h('div',{style:{fontSize:11,fontWeight:900,borderBottom:'2px solid #000',paddingBottom:2,marginBottom:7,textTransform:'uppercase'}},'Core Competencies / Skills'),
+          ...(r.skills||[]).map((s,i)=>h('div',{key:i,style:{fontSize:10.5,lineHeight:1.6,marginBottom:2}},h('strong',null,s.category+' '),h('span',{style:{color:'#444'}},s.items))),
+          h('div',{style:{fontSize:11,fontWeight:900,borderBottom:'2px solid #000',paddingBottom:2,marginTop:14,marginBottom:7,textTransform:'uppercase'}},'Professional Experience'),
+          ...(r.experience||[]).map((j,i)=>h('div',{key:i,style:{marginBottom:12}},
+            h('div',{style:{fontSize:11,fontWeight:900,textTransform:'uppercase'}},j.company),
+            h('div',{style:{fontSize:10.5,marginBottom:3}},h('strong',null,j.title),' ',h('span',{style:{color:'#555'}},`| ${j.location} | ${j.dates}`)),
+            ...(j.bullets||[]).map((b,k)=>h('div',{key:k,style:{fontSize:10.5,lineHeight:1.6,marginBottom:1,paddingLeft:6}},h('strong',null,b.label),' ',b.text))
+          )),
+          h('div',{style:{fontSize:11,fontWeight:900,borderBottom:'2px solid #000',paddingBottom:2,marginTop:14,marginBottom:7,textTransform:'uppercase'}},'Education & Certifications'),
+          ...(r.education||[]).map((e,i)=>h('div',{key:i,style:{marginBottom:7}},
+            h('strong',{style:{fontSize:10.5}},e.institution),
+            h('div',{style:{fontSize:10.5,color:'#444'}},`${e.degree} | ${e.location} | ${e.dates}`)
+          )),
+          ...(r.certifications||[]).map((c,i)=>h('div',{key:i,style:{fontSize:10.5,marginBottom:2}},h('strong',null,c.name),' | ',c.issuer))
+        ):h('div',{style:{background:'#0a1525',border:'1px solid #1e293b',borderRadius:12,padding:20,color:'#475569',fontSize:13}},'Rewrite not available. Re-run analysis.'),
+        h('div',{style:{marginTop:10,background:'#0d1b2e',border:'1px solid #1e3a5f',borderRadius:9,padding:'8px 12px',display:'flex',gap:7}},
+          h('span',{style:{color:'#3b82f6'}},'ℹ️'),
+          h('span',{style:{fontSize:11,color:'#475569',lineHeight:1.5}},
+            h('strong',{style:{color:'#93c5fd'}},'⬇ Word'),' downloads a .doc file — opens in Word, Google Docs & LibreOffice.  ',
+            h('strong',{style:{color:'#fca5a5'}},'⬇ PDF'),' downloads an HTML file — open in browser then Ctrl+P → Save as PDF.'
+          )
+        )
+      );
+
+      return null;
+    };
+
+    return h('div',{style:{background:'#050b15',minHeight:'100vh',fontFamily:"'DM Sans',sans-serif",color:'#e2e8f0'}},
+      // Topbar
+      h('div',{style:{background:'#060d1a',borderBottom:'1px solid #0f1e35',padding:'11px 20px',display:'flex',alignItems:'center',justifyContent:'space-between',position:'sticky',top:0,zIndex:50}},
+        h('div',{style:{display:'flex',alignItems:'center',gap:10}},
+          h('span',{style:{fontSize:18}},'📋'),
+          h('div',null,
+            h('div',{style:{fontSize:13,fontWeight:800}},'Resume Analyser'),
+            h('div',{style:{fontSize:10,color:'#334155',fontFamily:"'DM Mono',monospace"}},`${data.candidate_name} · ${data.inferred_role}`)
+          )
+        ),
+        h('div',{style:{display:'flex',gap:8,alignItems:'center'}},
+          h('div',{style:{fontFamily:"'DM Mono',monospace",fontSize:12,fontWeight:700,color:sc,background:`${sc}18`,border:`1px solid ${sc}40`,borderRadius:7,padding:'3px 10px'}},`${score}/100`),
+          h('button',{onClick:()=>{setStage('upload');setData(null);setResumeText('');setFileName('');},style:{background:'none',border:'1px solid #1e293b',borderRadius:7,color:'#475569',fontSize:11,padding:'5px 12px',cursor:'pointer',fontFamily:"'DM Sans',sans-serif"}},'← New')
+        )
+      ),
+      // Tabs
+      h('div',{style:{display:'flex',gap:2,padding:'10px 20px 0',borderBottom:'1px solid #0f1e35',overflowX:'auto'}},
+        ...[['overview','Overview'],['parameters','Parameters'],['keywords','Keywords'],['rewrite','Rewritten Resume']].map(([id,l])=>
+          h('button',{key:id,className:`tab${tab===id?' on':''}`,onClick:()=>setTab(id)},l)
+        )
+      ),
+      h('div',{style:{padding:20,maxWidth:1060,margin:'0 auto'}},h(TabContent))
+    );
+  }
+
+  return null;
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App));
+</script>
+</body>
+</html>
